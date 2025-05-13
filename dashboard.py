@@ -8,6 +8,7 @@ import xgboost as xgb # Import XGBoost explicitly
 import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+import pickle
 
 # --- Machine Learning Imports ---
 from sklearn.model_selection import train_test_split
@@ -334,6 +335,9 @@ if df_raw is not None:
             selected_icon = "🤖" if "Model" in st.session_state.get("page", "") else "⚪"
             model_btn = st.button(f"{selected_icon} Model Performance", use_container_width=True)
             
+            selected_icon = "🔮" if "Prediction" in st.session_state.get("page", "") else "⚪"
+            pred_btn = st.button(f"{selected_icon} Prediction", use_container_width=True)
+            
             # Handle button clicks
             if intro_btn:
                 st.session_state.page = "Introduction & Data Overview"
@@ -341,6 +345,8 @@ if df_raw is not None:
                 st.session_state.page = "Exploratory Data Analysis (EDA)"
             if model_btn:
                 st.session_state.page = "Model Performance Comparison"
+            if pred_btn:
+                st.session_state.page = "Prediction"
             
             # Default page
             if "page" not in st.session_state:
@@ -1214,6 +1220,55 @@ if df_raw is not None:
                         </div>
                         """, unsafe_allow_html=True)
 
+        elif page == "Prediction":
+            st.markdown("<h2 style='color: #3366ff;'>Breast Cancer Prediction</h2>", unsafe_allow_html=True)
+            st.markdown("<div class='insight-box'><p>Input the features below to predict if a tumor is <b>Malignant</b> or <b>Benign</b> using the best trained model.</p></div>", unsafe_allow_html=True)
+            # Load model and scaler
+            try:
+                with open("best_model.pkl", "rb") as f:
+                    best = pickle.load(f)
+                model = best["model"]
+                scaler = best["scaler"]
+            except Exception as e:
+                st.error(f"Could not load model: {e}")
+                st.stop()
+            # Get feature names (excluding id, diagnosis, Unnamed: 32)
+            feature_names = [col for col in df_raw.columns if col not in ["id", "diagnosis", "Unnamed: 32"]]
+            # Build input form
+            with st.form("prediction_form"):
+                cols = st.columns(3)
+                user_input = {}
+                for i, feat in enumerate(feature_names):
+                    with cols[i % 3]:
+                        min_val = float(df_raw[feat].min())
+                        max_val = float(df_raw[feat].max())
+                        mean_val = float(df_raw[feat].mean())
+                        user_input[feat] = st.number_input(f"{feat.replace('_', ' ').capitalize()}", value=mean_val, min_value=min_val, max_value=max_val, format="%.5f")
+                submitted = st.form_submit_button("Predict")
+            if submitted:
+                # Prepare input for model
+                X_input = pd.DataFrame([user_input])[feature_names]
+                # Scale input
+                try:
+                    X_scaled = scaler.transform(X_input)
+                except Exception as e:
+                    st.error(f"Error during scaling: {e}")
+                    st.stop()
+                # Predict
+                try:
+                    pred = model.predict(X_scaled)[0]
+                    proba = model.predict_proba(X_scaled)[0] if hasattr(model, "predict_proba") else None
+                except Exception as e:
+                    st.error(f"Error during prediction: {e}")
+                    st.stop()
+                # Show result
+                if pred == 1:
+                    st.markdown("<div class='data-card' style='background-color:#ffcccc;'><h3 style='color:#d32f2f;'>Prediction: Malignant</h3></div>", unsafe_allow_html=True)
+                else:
+                    st.markdown("<div class='data-card' style='background-color:#cce5ff;'><h3 style='color:#1976d2;'>Prediction: Benign</h3></div>", unsafe_allow_html=True)
+                if proba is not None:
+                    st.markdown(f"<div class='insight-box'><b>Probability:</b> Benign: {proba[0]:.2%}, Malignant: {proba[1]:.2%}</div>", unsafe_allow_html=True)
+
 # --- Footer ---
 st.markdown("---")
 st.markdown("""
@@ -1227,5 +1282,3 @@ st.markdown("""
     </div>
 </div>
 """, unsafe_allow_html=True)
-
-
